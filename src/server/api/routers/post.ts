@@ -1,18 +1,15 @@
-import { type User, clerkClient } from "@clerk/nextjs/server";
+import { clerkClient } from "@clerk/nextjs/server";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { createTRPCRouter, publicProcedure, privateProcedure } from "~/server/api/trpc";
+import {
+  createTRPCRouter,
+  publicProcedure,
+  privateProcedure,
+} from "~/server/api/trpc";
 
 import { Ratelimit } from "@upstash/ratelimit"; // for deno: see above
 import { Redis } from "@upstash/redis"; // see below for cloudflare and fastly adapters
-
-const filterUserForClient = (user: User) => {
-  return {
-    id: user.id,
-    name: user.firstName,
-    imageUrl: user.imageUrl,
-  };
-};
+import { filterUserForClient } from "~/server/helpers/filterUserForClient";
 
 // Create a new ratelimiter, that allows 3 requests per 1 minute
 const ratelimit = new Ratelimit({
@@ -33,9 +30,9 @@ export const postRouter = createTRPCRouter({
       take: 100,
       orderBy: [
         {
-          createdAt: 'desc'
-        }
-      ]
+          createdAt: "desc",
+        },
+      ],
     });
 
     const users = (
@@ -61,26 +58,30 @@ export const postRouter = createTRPCRouter({
     });
   }),
 
-  create: privateProcedure.input(z.object({
-    content: z.string().emoji("Only emojist are allowed").min(1).max(280)
-  })).mutation(async ({ctx, input}) => {
-    const authorId = ctx.userId;
+  create: privateProcedure
+    .input(
+      z.object({
+        content: z.string().emoji("Only emojist are allowed").min(1).max(280),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const authorId = ctx.userId;
 
-    const {success} = await ratelimit.limit(authorId)
+      const { success } = await ratelimit.limit(authorId);
 
-    if(!success) {
-      throw new TRPCError({
-        code: 'TOO_MANY_REQUESTS'
-      })
-    }
-
-    const post = await ctx.db.post.create({
-      data: {
-        authorId,
-        content: input.content
+      if (!success) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+        });
       }
-    })
 
-    return post
-  })
+      const post = await ctx.db.post.create({
+        data: {
+          authorId,
+          content: input.content,
+        },
+      });
+
+      return post;
+    }),
 });
